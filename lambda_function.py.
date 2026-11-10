@@ -1,0 +1,51 @@
+import json
+import urllib.parse
+import boto3
+import uuid
+from datetime import datetime
+
+# Conecta ao DynamoDB (compatível com AWS real e LocalStack)
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('RegistroUploads')
+
+def lambda_handler(event, context):
+    """
+    Função acionada automaticamente após o upload de um objeto no Amazon S3.
+    Lê os metadados do evento e salva o registro na tabela DynamoDB.
+    """
+    try:
+        # Percorre os registros de eventos gerados pelo S3
+        for record in event.get('Records', []):
+            bucket_name = record['s3']['bucket']['name']
+            object_key = urllib.parse.unquote_plus(
+                record['s3']['object']['key'], 
+                encoding='utf-8'
+            )
+            object_size = record['s3']['object'].get('size', 0)
+            
+            # Gera um identificador único para o registro
+            item_id = str(uuid.uuid4())
+            timestamp = datetime.utcnow().isoformat()
+            
+            # Salva os dados no DynamoDB
+            table.put_item(
+                Item={
+                    'id': item_id,
+                    'bucket': bucket_name,
+                    'file_name': object_key,
+                    'file_size': object_size,
+                    'processed_at': timestamp,
+                    'status': 'PROCESSED'
+                }
+            )
+            
+            print(f"Sucesso: Arquivo '{object_key}' do bucket '{bucket_name}' registrado.")
+            
+        return {
+            'statusCode': 200,
+            'body': json.dumps('Evento processado com sucesso!')
+        }
+        
+    except Exception as e:
+        print(f"Erro ao processar evento: {str(e)}")
+        raise e
